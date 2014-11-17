@@ -427,7 +427,6 @@ describe('injector', function() {
 			});
 
 			var injector = createInjector(['myModule']);
-			console.log(injector.get('b'));
 
 			expect(injector.get('a')).toBe(2);
 		});
@@ -442,10 +441,68 @@ describe('injector', function() {
 			module.provider('b', function BProvider(a) {
 				this.$get = function() { return a; };
 			});
+
+			expect(function() {
+				createInjector(['myModule']).get('b');
+			}).toThrow();
+		});
+
+		it('does not inject a provider to a $get function', function() {
+			var module = angular.module('myModule', []);
+
+			module.provider('a', function AProvider() {
+				this.$get = function() { return 1; };
+			});
+
+			module.provider('b', function BProvider() {
+				this.$get = function(aProvider) { return aProvider.$get(); };
+			});
+
 			var injector = createInjector(['myModule']);
-			// expect(function() {
-			// 	createInjector(['myModule']).get('b');
-			// }).toThrow();
+
+			expect(function() {
+				injector.get('b');
+			}).toThrow();
+		});
+
+		it('does not inject a provider to invoke', function() {
+			var module = angular.module('myModule', []);
+
+			module.provider('a', function AProvider() {
+				this.$get = function() { return 1; };
+			});
+
+			var injector = createInjector(['myModule']);
+
+			expect(function() {
+				injector.invoke(function(aProvider) {});
+			}).toThrow();
+		});
+
+		it('does not give access to providers through get', function() {
+			var module = angular.module('myModule', []);
+
+			module.provider('a', function AProvider() {
+				this.$get = function() { return 1; };
+			});
+
+			var injector = createInjector(['myModule']);
+			expect(function() {
+				injector.get('aProvider');
+			}).toThrow();
+		});
+
+		it('registers constants first to make them available to providers', function() {
+			var module = angular.module('myModule', []);
+
+			module.provider('a', function AProvider(b) {
+				this.$get = function() { return b; };
+			});
+
+			module.constant('b', 42);
+
+			var injector = createInjector(['myModule']);
+			expect(injector.get('a')).toBe(42);
 		});
 	});
 });
