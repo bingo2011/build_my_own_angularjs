@@ -1,6 +1,25 @@
 'use strict';
 
 var PREFIX_REGEXP = /(x[\:\-_]|data[\:\-_])/i;
+var BOOLEAN_ATTRS = {
+  multiple: true,
+  selected: true,
+  checked: true,
+  disabled: true,
+  readOnly: true,
+  required: true,
+  open: true
+};
+var BOOLEAN_ELEMENTS = {
+  INPUT: true,
+  SELECT: true,
+  OPTION: true,
+  TEXTAREA: true,
+  BUTTON: true,
+  FORM: true,
+  DETAILS: true
+};
+
 function nodeName(element) {
 	return element.nodeName ? element.nodeName : element[0].nodeName;
 }
@@ -8,6 +27,11 @@ function nodeName(element) {
 function directiveNormalize(name) {
   return _.camelCase(name.replace(PREFIX_REGEXP, ''));
 }
+
+function isBooleanAttribute(node, attrName) {
+  return BOOLEAN_ATTRS[attrName] && BOOLEAN_ELEMENTS[node.nodeName];
+}
+
 function $CompileProvider($provide) {
 
 	var hasDirectives = {};
@@ -38,21 +62,38 @@ function $CompileProvider($provide) {
 
 	this.$get = ['$injector', function($injector) {
 
+		function Attributes(element) {
+			this.$$element = element;
+		}
+
+		Attributes.prototype.$set = function(key, value, writeAttr) {
+			this[key] = value;
+
+			if(isBooleanAttribute(this.$$element[0], key)) {
+				this.$$element.prop(key, value);
+			}
+
+			if (writeAttr !== false) {
+				this.$$element.attr(key, value);
+			}
+		}
+
 		function compile($compileNodes) {
 			return compileNodes($compileNodes);
 		}
 
 		function compileNodes($compileNodes) {
 			_.forEach($compileNodes, function(node) {
-				var directives = collectDirectives(node);
-				applyDirectivesToNode(directives, node);
+				var attrs = new Attributes($(node));
+				var directives = collectDirectives(node, attrs);
+				applyDirectivesToNode(directives, node, attrs);
 				if (node.childNodes && node.childNodes.length) {
 					compileNodes(node.childNodes);
 				}
 			});
 		}
 
-		function collectDirectives(node) {
+		function collectDirectives(node, attrs) {
 			var directives = [];
 			if (node.nodeType === Node.ELEMENT_NODE) {
 				var normalizedNodeName = directiveNormalize(nodeName(node).toLowerCase());
@@ -75,6 +116,10 @@ function $CompileProvider($provide) {
 					}
 					normalizedAttr = directiveNormalize(name.toLowerCase());
 					addDirective(directives, normalizedAttr, 'A', attrStartName, attrEndName);
+					attrs[normalizedAttr] = attr.value.trim();
+					if (isBooleanAttribute(node, normalizedAttr)) {
+						attrs[normalizedAttr] = true;
+					}
 				});
 				_.forEach(node.classList, function(cls) {
 					var normalizedClassName = directiveNormalize(cls);
@@ -107,14 +152,14 @@ function $CompileProvider($provide) {
 			}
 		}
 
-		function applyDirectivesToNode(directives, compileNode) {
+		function applyDirectivesToNode(directives, compileNode, attrs) {
 			var $compileNode = $(compileNode);
 			_.forEach(directives, function(directive) {
 				if (directive.$$start) {
 					$compileNode = groupScan(compileNode, directive.$$start, directive.$$end);
 				}
 				if (directive.compile) {
-					directive.compile($compileNode);
+					directive.compile($compileNode, attrs);
 				}
 			});
 		}
